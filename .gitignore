@@ -1,0 +1,8 @@
+#.project
+#.cproject
+#.mxproject
+#.settings/
+.metadata/
+RemoteSystemsTempFiles/
+Debug/
+
