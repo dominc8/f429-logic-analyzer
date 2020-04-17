@@ -63,15 +63,15 @@ osThreadId samplingTaskHandle;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_GPIO2_Init(void);
 static void MX_CRC_Init(void);
 static void MX_DMA2D_Init(void);
 static void MX_FMC_Init(void);
 static void MX_LTDC_Init(void);
 static void MX_TIM1_Init(void);
-static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
+static void GPIO_Init(void);
+static void USART1_UART_Init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -106,14 +106,14 @@ int main (void)
     /* USER CODE END SysInit */
 
     /* Initialize all configured peripherals */
-    MX_GPIO2_Init();
+    GPIO_Init();
 //   MX_GPIO_Init();
 //   MX_CRC_Init();
 //   MX_DMA2D_Init();
 //   MX_FMC_Init();
 //   MX_LTDC_Init();
 //   MX_TIM1_Init();
-//   MX_USART1_UART_Init();
+    USART1_UART_Init();
     /* USER CODE BEGIN 2 */
 
     /* USER CODE END 2 */
@@ -384,32 +384,21 @@ static void MX_TIM1_Init(void)
   * @param None
   * @retval None
   */
-static void MX_USART1_UART_Init(void)
+static void USART1_UART_Init(void)
 {
+    huart1.Instance             = USART1;
+    huart1.Init.BaudRate        = 921600;
+    huart1.Init.WordLength      = UART_WORDLENGTH_8B;
+    huart1.Init.StopBits        = UART_STOPBITS_1;
+    huart1.Init.Parity          = UART_PARITY_NONE;
+    huart1.Init.Mode            = UART_MODE_TX_RX;
+    huart1.Init.HwFlowCtl       = UART_HWCONTROL_NONE;
+    huart1.Init.OverSampling    = UART_OVERSAMPLING_16;
 
-    /* USER CODE BEGIN USART1_Init 0 */
-
-    /* USER CODE END USART1_Init 0 */
-
-    /* USER CODE BEGIN USART1_Init 1 */
-
-    /* USER CODE END USART1_Init 1 */
-    huart1.Instance = USART1;
-    huart1.Init.BaudRate = 115200;
-    huart1.Init.WordLength = UART_WORDLENGTH_8B;
-    huart1.Init.StopBits = UART_STOPBITS_1;
-    huart1.Init.Parity = UART_PARITY_NONE;
-    huart1.Init.Mode = UART_MODE_TX_RX;
-    huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-    huart1.Init.OverSampling = UART_OVERSAMPLING_16;
     if (HAL_UART_Init(&huart1) != HAL_OK)
     {
       Error_Handler();
     }
-    /* USER CODE BEGIN USART1_Init 2 */
-
-    /* USER CODE END USART1_Init 2 */
-
 }
 
 /* FMC initialization function */
@@ -568,22 +557,22 @@ static void MX_GPIO_Init(void)
 
 }
 
-static void MX_GPIO2_Init(void)
+static void GPIO_Init(void)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-    /* GPIO Ports Clock Enable */
+    /* GPIOG Clock Enable */
     __HAL_RCC_GPIOG_CLK_ENABLE();
 
     /*Configure GPIO pin Output Level */
     HAL_GPIO_WritePin(GPIOG, LD3_Pin|LD4_Pin, GPIO_PIN_RESET);
-    /*Configure GPIO pins : LD3_Pin LD4_Pin */
-    GPIO_InitStruct.Pin = LD3_Pin|LD4_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
+    /*Configure GPIO pins : LD3_Pin LD4_Pin */
+    GPIO_InitStruct.Pin     = LD3_Pin|LD4_Pin;
+    GPIO_InitStruct.Mode    = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull    = GPIO_NOPULL;
+    GPIO_InitStruct.Speed   = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 }
 
  /**
