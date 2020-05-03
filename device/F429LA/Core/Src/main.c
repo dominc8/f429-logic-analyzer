@@ -115,7 +115,9 @@ int main (void)
 //   MX_TIM1_Init();
     USART1_UART_Init();
     /* USER CODE BEGIN 2 */
-
+    while (HAL_OK != SamplingTask_HALInit())
+    {
+    }
     /* USER CODE END 2 */
 
     /* USER CODE BEGIN RTOS_MUTEX */
@@ -399,6 +401,27 @@ static void USART1_UART_Init(void)
     {
       Error_Handler();
     }
+/*
+    __HAL_RCC_DMA2_CLK_ENABLE();
+
+    DMA_InitTypeDef Dma_InitStruct = { 0 };
+    Dma_InitStruct.Channel = DMA_CHANNEL_4;
+    Dma_InitStruct.Direction = DMA_MEMORY_TO_PERIPH;
+	Dma_InitStruct.FIFOMode = DMA_FIFOMODE_DISABLE;
+	Dma_InitStruct.MemBurst = DMA_MBURST_SINGLE;
+	Dma_InitStruct.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+	Dma_InitStruct.MemInc = DMA_MINC_DISABLE;
+	Dma_InitStruct.Mode = DMA_NORMAL;
+	Dma_InitStruct.PeriphBurst = DMA_PBURST_SINGLE;
+	Dma_InitStruct.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+	Dma_InitStruct.PeriphInc = DMA_PINC_DISABLE;
+	Dma_InitStruct.Priority = DMA_PRIORITY_VERY_HIGH;
+
+	DMA_HandleTypeDef dma_handle = {0};
+	dma_handle.Init =
+
+	HAL_DMA_Init(hdma)
+*/
 }
 
 /* FMC initialization function */
