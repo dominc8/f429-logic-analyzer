@@ -358,22 +358,23 @@ static void UART_Init(void)
 	__HAL_RCC_USART1_CLK_ENABLE();
 
 	DMA2_Stream7->CR = 0;									/* Turn off DMA2 Stream7 */
-	DMA2->HIFCR |= (uint32_t)(0x0F800000);					/* Clear Interrupt Status Bits */
+	DMA2->HIFCR |= (uint32_t)(0x0F400000);					/* Clear Interrupt Status Bits */
 	DMA2_Stream7->PAR = (uint32_t)&(USART1->DR);			/* Set Peripheral Destination Address */
-	DMA2_Stream7->M0AR = (uint32_t)(sample_arr[0].data);	/* Set Memory Source Address */
-	DMA2_Stream7->M1AR = (uint32_t)(sample_arr[1].data);
+	// DMA2_Stream7->M0AR = (uint32_t)(sample_arr[0].data);	/* Set Memory Source Address */
+	// DMA2_Stream7->M1AR = (uint32_t)(sample_arr[1].data);
 	DMA2_Stream7->NDTR = SAMPLES_SIZE;						/* Size of single trasfer */
 
 	DMA2_Stream7->CR = DMA_CHANNEL_4          |
-                       DMA_SxCR_DBM           |
+					   // DMA_CIRCULAR			  |
+                       // DMA_SxCR_DBM           |
 	                   DMA_PRIORITY_VERY_HIGH |
 	                   DMA_MINC_ENABLE		  |
-					   DMA_MEMORY_TO_PERIPH   |
-					   DMA_IT_TC;
+					   DMA_MEMORY_TO_PERIPH;
 
 
     USART1->SR = 0;
-    USART1->BRR = UART_BRR_SAMPLING16(HAL_RCC_GetPCLK2Freq(), 912600);	/* baudrate921600 */
+    USART1->BRR = 0x00000024; /* baudrate 2Mb/s when clock is 72 MHz */
+    // USART1->BRR = UART_BRR_SAMPLING16(HAL_RCC_GetPCLK2Freq(), 921600);
     USART1->CR1 = UART_STATE_ENABLE | UART_MODE_TX_RX;
     USART1->CR3 = USART_CR3_DMAT;
     /*
@@ -536,8 +537,7 @@ static void GPIO_Init(void)
     HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
     /* Configure GPIO pins : USART1 */
-
-    GPIO_InitStruct.Pin     = STLINK_RX_Pin|STLINK_TX_Pin;
+    GPIO_InitStruct.Pin     = STLINK_TX_Pin | STLINK_RX_Pin;
     GPIO_InitStruct.Alternate = GPIO_AF7_USART1;
     GPIO_InitStruct.Mode    = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull    = GPIO_NOPULL;

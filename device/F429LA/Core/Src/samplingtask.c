@@ -38,8 +38,19 @@ void StartSamplingTask(void const * arg)
     {
 		while (ready_to_transmission == 0);
 		ready_to_transmission = 0;
+		USART1->SR = ~UART_FLAG_TC;
+		DMA2_Stream7->CR &= ~DMA_SxCR_EN;
+		DMA2_Stream7->NDTR = SAMPLES_SIZE;
+		DMA2->HIFCR = (uint32_t)(0x0F400000);
+		DMA2_Stream7->M0AR = (uint32_t)(curr_sample->next_data->data);
 		DMA2_Stream7->CR |= DMA_SxCR_EN;
 		// HAL_UART_Transmit(&huart1, samples, SAMPLES_SIZE_2, 1000);
+
+		// USART1->DR = 'A';
+		// __HAL_UART_CLEAR_FLAG(huart, UART_FLAG_TC);
+	    /* Enable the DMA transfer for transmit request by setting the DMAT bit
+	    SET_BIT(huart->Instance->CR3, USART_CR3_DMAT);
+	       in the UART CR3 register */
 
 		//if ((*sdram_ptr) == 0x12345678)
 		HAL_GPIO_TogglePin(GPIOG, RED_LED_Pin);
@@ -78,8 +89,8 @@ HAL_StatusTypeDef SamplingTask_HALInit(void)
   /* Initialize TIM8 */
   htim8.Instance = TIM8;
 
-  htim8.Init.Period = 99;
-  htim8.Init.Prescaler = uwPrescalerValue;
+  htim8.Init.Period = 72 * 10 / 2;
+  htim8.Init.Prescaler = 0; //uwPrescalerValue;
   htim8.Init.ClockDivision = 0;
   htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
 
@@ -110,6 +121,7 @@ void TIM8_UP_TIM13_IRQHandler(void)
             __HAL_TIM_CLEAR_FLAG(&htim8, TIM_FLAG_UPDATE);
             /* Get pin values from E2-E5 and B12-B15 */
             *sample_ptr = (uint8_t)( ((GPIOE->IDR & 0x003C) >> 2) | ((GPIOB->IDR & 0xF000) >> 8));
+            //*sample_ptr = 'A';
             sample_ptr++;
             if (sample_ptr >= curr_sample->data + SAMPLES_SIZE)
             {
