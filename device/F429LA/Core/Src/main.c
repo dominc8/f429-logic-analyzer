@@ -21,7 +21,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "samplingtask.h"
 #include "main.h"
-#include "cmsis_os.h"
+#include "stm32f429i_discovery_sdram.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -55,7 +55,6 @@ UART_HandleTypeDef huart1;
 
 SDRAM_HandleTypeDef hsdram1;
 
-osThreadId samplingTaskHandle;
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -71,7 +70,7 @@ static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 static void GPIO_Init(void);
-static void USART1_UART_Init(void);
+static void UART_Init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -85,77 +84,42 @@ static void USART1_UART_Init(void);
   */
 int main (void)
 {
-    /* USER CODE BEGIN 1 */
-
-    /* USER CODE END 1 */
-
-    /* MCU Configuration--------------------------------------------------------*/
-
     /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
     HAL_Init();
-
-    /* USER CODE BEGIN Init */
-
-    /* USER CODE END Init */
 
     /* Configure the system clock */
     SystemClock_Config();
 
-    /* USER CODE BEGIN SysInit */
-
-    /* USER CODE END SysInit */
 
     /* Initialize all configured peripherals */
     GPIO_Init();
+
+    if (BSP_SDRAM_Init() == SDRAM_OK)
+    {
+    	HAL_GPIO_TogglePin(GPIOG, LD3_Pin);
+    }
+    else
+    {
+    	HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
+    }
 //   MX_GPIO_Init();
 //   MX_CRC_Init();
 //   MX_DMA2D_Init();
 //   MX_FMC_Init();
 //   MX_LTDC_Init();
 //   MX_TIM1_Init();
-    USART1_UART_Init();
+    UART_Init();
     /* USER CODE BEGIN 2 */
     while (HAL_OK != SamplingTask_HALInit())
     {
     }
     /* USER CODE END 2 */
 
-    /* USER CODE BEGIN RTOS_MUTEX */
-    /* add mutexes, ... */
-    /* USER CODE END RTOS_MUTEX */
+    StartSamplingTask(NULL);
 
-    /* USER CODE BEGIN RTOS_SEMAPHORES */
-    /* add semaphores, ... */
-    /* USER CODE END RTOS_SEMAPHORES */
-
-    /* USER CODE BEGIN RTOS_TIMERS */
-    /* start timers, add new ones, ... */
-    /* USER CODE END RTOS_TIMERS */
-
-    /* USER CODE BEGIN RTOS_QUEUES */
-    /* add queues, ... */
-    /* USER CODE END RTOS_QUEUES */
-
-    /* Create the thread(s) */
-    /* definition and creation of defaultTask */
-
-    /* USER CODE BEGIN RTOS_THREADS */
-    osThreadDef(samplingTask, StartSamplingTask, osPriorityNormal, 1, 2048);
-    samplingTaskHandle = osThreadCreate(osThread(samplingTask), NULL);
-
-    /* USER CODE END RTOS_THREADS */
-
-    /* Start scheduler */
-
-    if (samplingTaskHandle != NULL)
-    {
-    	osKernelStart();
-    }
- 
-    /* We should never get here as control is now taken by the scheduler */
     while (1)
     {
-    	HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
+    	//HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
     }
 }
 
@@ -386,42 +350,65 @@ static void MX_TIM1_Init(void)
   * @param None
   * @retval None
   */
-static void USART1_UART_Init(void)
+static void UART_Init(void)
 {
-    huart1.Instance             = USART1;
-    huart1.Init.BaudRate        = 921600;
-    huart1.Init.WordLength      = UART_WORDLENGTH_8B;
-    huart1.Init.StopBits        = UART_STOPBITS_1;
-    huart1.Init.Parity          = UART_PARITY_NONE;
-    huart1.Init.Mode            = UART_MODE_TX_RX;
-    huart1.Init.HwFlowCtl       = UART_HWCONTROL_NONE;
-    huart1.Init.OverSampling    = UART_OVERSAMPLING_16;
+	/* USART1 and DMA2 Channel4 Stream7 */
 
-    if (HAL_UART_Init(&huart1) != HAL_OK)
-    {
-      Error_Handler();
-    }
-/*
     __HAL_RCC_DMA2_CLK_ENABLE();
+	__HAL_RCC_USART1_CLK_ENABLE();
 
-    DMA_InitTypeDef Dma_InitStruct = { 0 };
-    Dma_InitStruct.Channel = DMA_CHANNEL_4;
-    Dma_InitStruct.Direction = DMA_MEMORY_TO_PERIPH;
-	Dma_InitStruct.FIFOMode = DMA_FIFOMODE_DISABLE;
-	Dma_InitStruct.MemBurst = DMA_MBURST_SINGLE;
-	Dma_InitStruct.MemDataAlignment = DMA_MDATAALIGN_BYTE;
-	Dma_InitStruct.MemInc = DMA_MINC_DISABLE;
-	Dma_InitStruct.Mode = DMA_NORMAL;
-	Dma_InitStruct.PeriphBurst = DMA_PBURST_SINGLE;
-	Dma_InitStruct.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
-	Dma_InitStruct.PeriphInc = DMA_PINC_DISABLE;
-	Dma_InitStruct.Priority = DMA_PRIORITY_VERY_HIGH;
+	DMA2_Stream7->CR = 0;									/* Turn off DMA2 Stream7 */
+	DMA2->HIFCR |= (uint32_t)(0x0F400000);					/* Clear Interrupt Status Bits */
+	DMA2_Stream7->PAR = (uint32_t)&(USART1->DR);			/* Set Peripheral Destination Address */
+	// DMA2_Stream7->M0AR = (uint32_t)(sample_arr[0].data);	/* Set Memory Source Address */
+	// DMA2_Stream7->M1AR = (uint32_t)(sample_arr[1].data);
+	DMA2_Stream7->NDTR = SAMPLES_SIZE;						/* Size of single trasfer */
 
-	DMA_HandleTypeDef dma_handle = {0};
-	dma_handle.Init =
+	DMA2_Stream7->CR = DMA_CHANNEL_4          |
+					   // DMA_CIRCULAR			  |
+                       // DMA_SxCR_DBM           |
+	                   DMA_PRIORITY_VERY_HIGH |
+	                   DMA_MINC_ENABLE		  |
+					   DMA_MEMORY_TO_PERIPH;
 
-	HAL_DMA_Init(hdma)
-*/
+
+    USART1->SR = 0;
+    USART1->BRR = 0x00000024; /* baudrate 2Mb/s when clock is 72 MHz */
+    // USART1->BRR = UART_BRR_SAMPLING16(HAL_RCC_GetPCLK2Freq(), 921600);
+    USART1->CR1 = UART_STATE_ENABLE | UART_MODE_TX_RX;
+    USART1->CR3 = USART_CR3_DMAT;
+    /*
+1.
+Write the USART_DR register address in the DMA control register to configure it as the
+destination of the transfer. The data will be moved to this address from memory after
+each TXE event.
+2.
+Write the memory address in the DMA control register to configure it as the source of
+the transfer. The data will be loaded into the USART_DR register from this memory
+area after each TXE event.
+3.
+Configure the total number of bytes to be transferred to the DMA control register.
+4.
+Configure the channel priority in the DMA register
+5.
+Configure DMA interrupt generation after half/ full transfer as required by the
+application.
+6.
+Clear the TC bit in the SR register by writing 0 to it.
+7.
+Activate the channel in the DMA register.
+     * */
+
+    //DMA1_Stream6 -> NDTR = nTransfers;
+    //DMA1_Stream6 -> PAR = (uint32_t)&(USART2 -> DR);
+    //DMA1_Stream6 -> M0AR = (uint32_t)&dataBuff;
+    //DMA1_Stream6 -> CR = DMA_SxCR_CHSEL_2 | DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_TCIE; // you can enable half transfer enable as well
+
+    //USART2 -> BRR = FCLK / LOWSPEED;
+    //USART2 -> CR3 |= USART_CR3_DMAT;
+    //USART2 -> CR1 = (USART_CR1_TE | USART_CR1_RE | USART_CR1_UE);
+    //DMA1_Stream6 -> CR |= DMA_SxCR_EN;
+
 }
 
 /* FMC initialization function */
@@ -429,7 +416,7 @@ static void MX_FMC_Init(void)
 {
 
     /* USER CODE BEGIN FMC_Init 0 */
-
+	__HAL_RCC_FMC_CLK_ENABLE();
     /* USER CODE END FMC_Init 0 */
 
     FMC_SDRAM_TimingTypeDef SdramTiming = {0};
@@ -476,11 +463,11 @@ static void MX_FMC_Init(void)
   * @param None
   * @retval None
   */
-static void MX_GPIO_Init(void)
+static void GPIO_Init(void)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-    /* GPIO Ports Clock Enable */
+    /* GPIOs Clock Enable */
     __HAL_RCC_GPIOC_CLK_ENABLE();
     __HAL_RCC_GPIOF_CLK_ENABLE();
     __HAL_RCC_GPIOH_CLK_ENABLE();
@@ -490,51 +477,45 @@ static void MX_GPIO_Init(void)
     __HAL_RCC_GPIOE_CLK_ENABLE();
     __HAL_RCC_GPIOD_CLK_ENABLE();
 
-    /*Configure GPIO pin Output Level */
-    HAL_GPIO_WritePin(GPIOC, NCS_MEMS_SPI_Pin|CSX_Pin|OTG_FS_PSO_Pin, GPIO_PIN_RESET);
-
-    /*Configure GPIO pin Output Level */
-    HAL_GPIO_WritePin(ACP_RST_GPIO_Port, ACP_RST_Pin, GPIO_PIN_RESET);
-
-    /*Configure GPIO pin Output Level */
+    /*Configure GPIO pin Output Levels */
+    HAL_GPIO_WritePin(GPIOC, CSX_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(GPIOD, RDX_Pin|WRX_DCX_Pin, GPIO_PIN_RESET);
-
-    /*Configure GPIO pin Output Level */
     HAL_GPIO_WritePin(GPIOG, LD3_Pin|LD4_Pin, GPIO_PIN_RESET);
 
-    /*Configure GPIO pins : SPI5_SCK_Pin SPI5_MISO_Pin SPI5_MOSI_Pin */
-    GPIO_InitStruct.Pin = SPI5_SCK_Pin|SPI5_MISO_Pin|SPI5_MOSI_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF5_SPI5;
-    HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
-    /*Configure GPIO pins : NCS_MEMS_SPI_Pin CSX_Pin OTG_FS_PSO_Pin */
-    GPIO_InitStruct.Pin = NCS_MEMS_SPI_Pin|CSX_Pin|OTG_FS_PSO_Pin;
+    /* Configure GPIO pins : LD3_Pin LD4_Pin */
+    GPIO_InitStruct.Pin     = LD3_Pin|LD4_Pin;
+    GPIO_InitStruct.Mode    = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull    = GPIO_NOPULL;
+    GPIO_InitStruct.Speed   = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
+
+    /* Configure GPIO pins for sampling data (E2-E5) */
+    GPIO_InitStruct.Pin = (uint16_t)(0x000F << 2);
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_HIGH;
+    HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+    /* Configure GPIO pins for sampling data (B12-B15) */
+    GPIO_InitStruct.Pin = (uint16_t)(0x000F << 12);
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_HIGH;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    /*Configure GPIO pins : CSX_Pin  */
+    GPIO_InitStruct.Pin = CSX_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-    /*Configure GPIO pins : B1_Pin MEMS_INT1_Pin MEMS_INT2_Pin TP_INT1_Pin */
-    GPIO_InitStruct.Pin = B1_Pin|MEMS_INT1_Pin|MEMS_INT2_Pin|TP_INT1_Pin;
+    /*Configure GPIO pins : B1_Pin TP_INT1_Pin */
+    GPIO_InitStruct.Pin = B1_Pin|TP_INT1_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_EVT_RISING;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    /*Configure GPIO pin : ACP_RST_Pin */
-    GPIO_InitStruct.Pin = ACP_RST_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(ACP_RST_GPIO_Port, &GPIO_InitStruct);
-
-    /*Configure GPIO pin : OTG_FS_OC_Pin */
-    GPIO_InitStruct.Pin = OTG_FS_OC_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_EVT_RISING;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(OTG_FS_OC_GPIO_Port, &GPIO_InitStruct);
 
     /*Configure GPIO pin : BOOT1_Pin */
     GPIO_InitStruct.Pin = BOOT1_Pin;
@@ -555,57 +536,26 @@ static void MX_GPIO_Init(void)
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
-    /*Configure GPIO pin : I2C3_SDA_Pin */
-    GPIO_InitStruct.Pin = I2C3_SDA_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
-    GPIO_InitStruct.Pull = GPIO_PULLUP;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF4_I2C3;
-    HAL_GPIO_Init(I2C3_SDA_GPIO_Port, &GPIO_InitStruct);
-
-    /*Configure GPIO pin : I2C3_SCL_Pin */
-    GPIO_InitStruct.Pin = I2C3_SCL_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
-    GPIO_InitStruct.Pull = GPIO_PULLUP;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF4_I2C3;
-    HAL_GPIO_Init(I2C3_SCL_GPIO_Port, &GPIO_InitStruct);
-
-    /*Configure GPIO pins : LD3_Pin LD4_Pin */
-    GPIO_InitStruct.Pin = LD3_Pin|LD4_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
-
-}
-
-static void GPIO_Init(void)
-{
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-    /* GPIOG Clock Enable */
-    __HAL_RCC_GPIOG_CLK_ENABLE();
-    __HAL_RCC_GPIOE_CLK_ENABLE();
-
-    /* Configure GPIO pin Output Level */
-    HAL_GPIO_WritePin(GPIOG, LD3_Pin|LD4_Pin, GPIO_PIN_RESET);
-
-    /* Configure GPIO pins : LD3_Pin LD4_Pin */
-    GPIO_InitStruct.Pin     = LD3_Pin|LD4_Pin;
-    GPIO_InitStruct.Mode    = GPIO_MODE_OUTPUT_PP;
+    /* Configure GPIO pins : USART1 */
+    GPIO_InitStruct.Pin     = STLINK_TX_Pin | STLINK_RX_Pin;
+    GPIO_InitStruct.Alternate = GPIO_AF7_USART1;
+    GPIO_InitStruct.Mode    = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull    = GPIO_NOPULL;
-    GPIO_InitStruct.Speed   = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
+    GPIO_InitStruct.Speed   = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_Init(STLINK_RX_TX_GPIO_Port, &GPIO_InitStruct);
 
-    /* Configure GPIO pins for sampling data (E2-E5) */
-    GPIO_InitStruct.Pin = (uint16_t)0x003C;
-    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+
+    /*Configure GPIO pins : User button B1 */
+    GPIO_InitStruct.Pin = B1_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_HIGH;
-    HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-}
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
+    HAL_NVIC_SetPriority(EXTI0_IRQn, 2, 0);
+    HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
+}
  /**
   * @brief  Period elapsed callback in non blocking mode
   * @note   This function is called  when TIM6 interrupt took place, inside
