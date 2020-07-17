@@ -1,5 +1,5 @@
 /*
- * sampletask.c
+ * samplingtask.c
  *
  *  Created on: Apr 14, 2020
  *      Author: dominik
@@ -24,21 +24,21 @@ static volatile uint8_t ready_to_transmission = 0;
 static volatile uint32_t *sdram_ptr = (uint32_t *)0xD0000000;
 
 
-void StartSamplingTask(void const * arg)
+void StartSamplingTask(Config_T *config)
 {
-	for(;;)
+    for(;;)
     {
-		while (ready_to_transmission == 0);
-		ready_to_transmission = 0;
+        while (ready_to_transmission == 0);
+        ready_to_transmission = 0;
 
-		USART1->SR = ~UART_FLAG_TC;
-		DMA2_Stream7->CR &= ~DMA_SxCR_EN;
-		DMA2_Stream7->NDTR = SAMPLES_SIZE;
-		DMA2->HIFCR = (uint32_t)(0x0F400000);
-		DMA2_Stream7->M0AR = (uint32_t)(curr_sample->next_data->data);
-		DMA2_Stream7->CR |= DMA_SxCR_EN;
+        USART1->SR = ~UART_FLAG_TC;
+        DMA2_Stream7->CR &= ~DMA_SxCR_EN;
+        DMA2_Stream7->NDTR = SAMPLES_SIZE;
+        DMA2->HIFCR = (uint32_t)(0x0F400000);
+        DMA2_Stream7->M0AR = (uint32_t)(curr_sample->next_data->data);
+        DMA2_Stream7->CR |= DMA_SxCR_EN;
 
-		HAL_GPIO_TogglePin(GPIOG, RED_LED_Pin);
+        HAL_GPIO_TogglePin(GPIOG, RED_LED_Pin);
     }
 }
 
@@ -50,7 +50,7 @@ HAL_StatusTypeDef SamplingTask_HALInit(void)
   uint32_t              uwTimclock = 0;
   uint32_t              uwPrescalerValue = 0;
   uint32_t              pFLatency;
-  HAL_StatusTypeDef		retval = HAL_ERROR;
+  HAL_StatusTypeDef        retval = HAL_ERROR;
 
   /* Configure the IRQs */
   HAL_NVIC_SetPriority(TIM8_UP_TIM13_IRQn , 10, 0);
@@ -76,13 +76,13 @@ HAL_StatusTypeDef SamplingTask_HALInit(void)
 
   if(HAL_OK == HAL_TIM_Base_Init(&htim8))
   {
-	  HAL_TIM_Base_Start_IT(&htim8);
-	  retval = HAL_OK;
+      HAL_TIM_Base_Start_IT(&htim8);
+      retval = HAL_OK;
   }
 
   if (HAL_OK == retval)
   {
-	  TIM8->CR1 |= 1;
+      TIM8->CR1 |= 1;
   }
 
   return retval;
@@ -93,7 +93,7 @@ HAL_StatusTypeDef SamplingTask_HALInit(void)
 
 void TIM8_UP_TIM13_IRQHandler(void)
 {
-	static uint8_t move_mask = 4;
+    static uint8_t move_mask = 4;
     if (__HAL_TIM_GET_FLAG(&htim8, TIM_FLAG_UPDATE) != RESET)      //In case other interrupts are also running
     {
         if (__HAL_TIM_GET_ITSTATUS(&htim8, TIM_IT_UPDATE) != RESET)
@@ -105,10 +105,10 @@ void TIM8_UP_TIM13_IRQHandler(void)
             sample_ptr++;
             if (sample_ptr >= curr_sample->data + SAMPLES_SIZE)
             {
-            	ready_to_transmission = 1;
-            	curr_sample = curr_sample->next_data;
-            	sample_ptr = curr_sample->data;
-            	HAL_GPIO_TogglePin(GPIOG, GREEN_LED_Pin);
+                ready_to_transmission = 1;
+                curr_sample = curr_sample->next_data;
+                sample_ptr = curr_sample->data;
+                HAL_GPIO_TogglePin(GPIOG, GREEN_LED_Pin);
             }
         }
     }
@@ -116,8 +116,8 @@ void TIM8_UP_TIM13_IRQHandler(void)
 
 void EXTI0_IRQHandler(void)
 {
-	__HAL_GPIO_EXTI_CLEAR_FLAG(1);
-	HAL_GPIO_TogglePin(GPIOG, RED_LED_Pin);
+    __HAL_GPIO_EXTI_CLEAR_FLAG(1);
+    HAL_GPIO_TogglePin(GPIOG, RED_LED_Pin);
 }
 
 

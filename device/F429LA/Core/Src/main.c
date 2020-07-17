@@ -20,6 +20,7 @@
 #include "stm32f429i_discovery_sdram.h"
 
 
+void SystemClock_Config(void);
 static void GPIO_Init(void);
 static void UART_Init(void);
 
@@ -32,11 +33,11 @@ int main (void)
 
     if (BSP_SDRAM_Init() == SDRAM_OK)
     {
-    	HAL_GPIO_TogglePin(GPIOG, LD3_Pin);
+        HAL_GPIO_TogglePin(GPIOG, LD3_Pin);
     }
     else
     {
-    	HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
+        HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
     }
 
     UART_Init();
@@ -45,12 +46,21 @@ int main (void)
     {
     }
 
+    Config_T config =
+    {
+        .baudrate = 2000000,
+        .sampling_mode = RT,
+        .sampling_sources = EIGHT
+    };
 
-    StartSamplingTask(NULL);
+    StartSamplingTask(&config);
 
     while (1)
     {
-    	//HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
+
+
+
+        //HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
     }
 }
 
@@ -61,11 +71,11 @@ void SystemClock_Config(void)
     RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
     RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
 
-    /** Configure the main internal regulator output voltage 
+    /** Configure the main internal regulator output voltage
     */
     __HAL_RCC_PWR_CLK_ENABLE();
     __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
-    /** Initializes the CPU, AHB and APB busses clocks 
+    /** Initializes the CPU, AHB and APB busses clocks
     */
     RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
     RCC_OscInitStruct.HSEState = RCC_HSE_ON;
@@ -79,7 +89,7 @@ void SystemClock_Config(void)
     {
       Error_Handler();
     }
-    /** Initializes the CPU, AHB and APB busses clocks 
+    /** Initializes the CPU, AHB and APB busses clocks
     */
     RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                                 |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
@@ -105,24 +115,24 @@ void SystemClock_Config(void)
 
 static void UART_Init(void)
 {
-	/* USART1 and DMA2 Channel4 Stream7 */
+    /* USART1 and DMA2 Channel4 Stream7 */
 
     __HAL_RCC_DMA2_CLK_ENABLE();
-	__HAL_RCC_USART1_CLK_ENABLE();
+    __HAL_RCC_USART1_CLK_ENABLE();
 
-	DMA2_Stream7->CR = 0;									/* Turn off DMA2 Stream7 */
-	DMA2->HIFCR |= (uint32_t)(0x0F400000);					/* Clear Interrupt Status Bits */
-	DMA2_Stream7->PAR = (uint32_t)&(USART1->DR);			/* Set Peripheral Destination Address */
-	// DMA2_Stream7->M0AR = (uint32_t)(sample_arr[0].data);	/* Set Memory Source Address */
-	// DMA2_Stream7->M1AR = (uint32_t)(sample_arr[1].data);
-	DMA2_Stream7->NDTR = SAMPLES_SIZE;						/* Size of single trasfer */
+    DMA2_Stream7->CR = 0;                                       /* Turn off DMA2 Stream7 */
+    DMA2->HIFCR |= (uint32_t)(0x0F400000);                      /* Clear Interrupt Status Bits */
+    DMA2_Stream7->PAR = (uint32_t)&(USART1->DR);                /* Set Peripheral Destination Address */
+    // DMA2_Stream7->M0AR = (uint32_t)(sample_arr[0].data);     /* Set Memory Source Address */
+    // DMA2_Stream7->M1AR = (uint32_t)(sample_arr[1].data);
+    DMA2_Stream7->NDTR = SAMPLES_SIZE;                          /* Size of single trasfer */
 
-	DMA2_Stream7->CR = DMA_CHANNEL_4          |
-					   // DMA_CIRCULAR			  |
+    DMA2_Stream7->CR = DMA_CHANNEL_4          |
+                       // DMA_CIRCULAR           |
                        // DMA_SxCR_DBM           |
-	                   DMA_PRIORITY_VERY_HIGH |
-	                   DMA_MINC_ENABLE		  |
-					   DMA_MEMORY_TO_PERIPH;
+                       DMA_PRIORITY_VERY_HIGH |
+                       DMA_MINC_ENABLE        |
+                       DMA_MEMORY_TO_PERIPH;
 
 
     USART1->SR = 0;
