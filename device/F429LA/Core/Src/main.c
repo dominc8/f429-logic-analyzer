@@ -15,14 +15,14 @@
 -  *
 -  ******************************************************************************
 -  */
-#include "samplingtask.h"
+#include "sampling.h"
 #include "main.h"
 #include "stm32f429i_discovery_sdram.h"
 
 
-void SystemClock_Config(void);
+static void SystemClock_Config(void);
 static void GPIO_Init(void);
-static void UART_Init(void);
+static void DMA_Uart_Init(void);
 
 
 int main (void)
@@ -35,14 +35,10 @@ int main (void)
     {
         HAL_GPIO_TogglePin(GPIOG, LD3_Pin);
     }
-    else
-    {
-        HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
-    }
 
-    UART_Init();
+    DMA_Uart_Init();
 
-    while (HAL_OK != SamplingTask_HALInit())
+    while (HAL_OK != Timer_Init())
     {
     }
 
@@ -50,22 +46,23 @@ int main (void)
     {
         .baudrate = 2000000,
         .sampling_mode = RT,
-        .sampling_sources = EIGHT
+        .sampling_sources = EIGHT,
+        .sampling_rate = 200000,
     };
-
-    StartSamplingTask(&config);
 
     while (1)
     {
-
-
+        // TODO: Parse Incoming Uart Data,
+        // possibly change configuration (Config_T config)
+        // and start transmission by calling StartSampling()
+        StartSampling(&config);
 
         //HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
     }
 }
 
 
-void SystemClock_Config(void)
+static void SystemClock_Config(void)
 {
     RCC_OscInitTypeDef RCC_OscInitStruct = {0};
     RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
@@ -113,9 +110,10 @@ void SystemClock_Config(void)
 }
 
 
-static void UART_Init(void)
+static void DMA_Uart_Init(void)
 {
-    /* USART1 and DMA2 Channel4 Stream7 */
+    /* DMA2 Channel4 Stream7 for USART1 initial configuration.
+     * The rest is configured before sampling. */
 
     __HAL_RCC_DMA2_CLK_ENABLE();
     __HAL_RCC_USART1_CLK_ENABLE();
@@ -125,7 +123,6 @@ static void UART_Init(void)
     DMA2_Stream7->PAR = (uint32_t)&(USART1->DR);                /* Set Peripheral Destination Address */
     // DMA2_Stream7->M0AR = (uint32_t)(sample_arr[0].data);     /* Set Memory Source Address */
     // DMA2_Stream7->M1AR = (uint32_t)(sample_arr[1].data);
-    DMA2_Stream7->NDTR = SAMPLES_SIZE;                          /* Size of single trasfer */
 
     DMA2_Stream7->CR = DMA_CHANNEL_4          |
                        // DMA_CIRCULAR           |
@@ -134,9 +131,7 @@ static void UART_Init(void)
                        DMA_MINC_ENABLE        |
                        DMA_MEMORY_TO_PERIPH;
 
-
     USART1->SR = 0;
-    USART1->BRR = 0x00000024; /* baudrate 2Mb/s when clock is 72 MHz */
     USART1->CR1 = UART_STATE_ENABLE | UART_MODE_TX_RX;
     USART1->CR3 = USART_CR3_DMAT;
 }

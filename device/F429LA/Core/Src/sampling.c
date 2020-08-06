@@ -1,13 +1,8 @@
-/*
- * samplingtask.c
- *
- *  Created on: Apr 14, 2020
- *      Author: dominik
- */
+#include "sampling.h"
 
+#include "stm32f4xx_hal_uart.h"
 #include <stdint.h>
 
-#include "samplingtask.h"
 
 #define GREEN_LED_Pin GPIO_PIN_13
 #define RED_LED_Pin   GPIO_PIN_14
@@ -20,13 +15,83 @@ static volatile Sample_Data_T *curr_sample = sample_arr;
 static volatile uint8_t *sample_ptr = sample_arr[0].data;
 
 static volatile uint8_t ready_to_transmission = 0;
+static volatile uint8_t sampling_enabled = 0;
 
 static volatile uint32_t *sdram_ptr = (uint32_t *)0xD0000000;
 
+static void RunSampling_RT(void);
+static void RunSampling_NRT(void);
 
-void StartSamplingTask(Config_T *config)
+
+void StartSampling(Config_T *config)
 {
-    for(;;)
+    USART1->BRR = UART_BRR_SAMPLING16(HAL_RCC_GetPCLK2Freq(), config->baudrate);
+
+    // TODO: Change pointer to function to be called in interrupt
+    // Configure sampling sources
+
+    sampling_enabled = 1;
+
+    /* Reset and restart timer */
+    TIM8->ARR = 2 * HAL_RCC_GetPCLK1Freq() / config->sampling_rate; // ?
+    TIM8->CNT = 0;
+    TIM8->CR1 |= TIM_CR1_CEN;
+
+    switch (config->sampling_mode)
+    {
+        case RT:
+            RunSampling_RT();
+            break;
+        case NRT:
+            RunSampling_NRT();
+            break;
+        default:
+            break;
+    }
+}
+
+HAL_StatusTypeDef Timer_Init(void)
+{
+  RCC_ClkInitTypeDef    clkconfig;
+  uint32_t              baseclock;
+  uint32_t              pFLatency;
+  HAL_StatusTypeDef     retval = HAL_ERROR;
+
+  /* Configure the IRQs */
+  HAL_NVIC_SetPriority(TIM8_UP_TIM13_IRQn , 10, 0);
+  HAL_NVIC_EnableIRQ(TIM8_UP_TIM13_IRQn);
+
+  /* Enable clocks */
+  __HAL_RCC_TIM8_CLK_ENABLE();
+
+  /* Get clock configuration */
+  HAL_RCC_GetClockConfig(&clkconfig, &pFLatency);
+
+  /* Compute TIM8 parameters */
+  baseclock = 2 * HAL_RCC_GetPCLK1Freq();
+
+  /* Initialize TIM8 */
+  htim8.Instance = TIM8;
+
+  htim8.Init.Period = baseclock / 200000; /* 200 kHz, but it is overwritten by actual value */
+  htim8.Init.Prescaler = 0;
+  htim8.Init.ClockDivision = 0;
+  htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
+
+  if(HAL_OK == HAL_TIM_Base_Init(&htim8))
+  {
+      HAL_TIM_Base_Start_IT(&htim8);
+      retval = HAL_OK;
+  }
+
+  return retval;
+}
+
+
+void RunSampling_RT(void)
+{
+
+    while(sampling_enabled)
     {
         while (ready_to_transmission == 0);
         ready_to_transmission = 0;
@@ -40,54 +105,24 @@ void StartSamplingTask(Config_T *config)
 
         HAL_GPIO_TogglePin(GPIOG, RED_LED_Pin);
     }
+
+    int32_t left_samples = (int32_t)sample_ptr - (int32_t)curr_sample->data;
+
+    if ((left_samples > 0) && (left_samples < SAMPLES_SIZE))
+    {
+        USART1->SR = ~UART_FLAG_TC;
+        DMA2_Stream7->CR &= ~DMA_SxCR_EN;
+        DMA2_Stream7->NDTR = (uint32_t)left_samples;
+        DMA2->HIFCR = (uint32_t)(0x0F400000);
+        DMA2_Stream7->M0AR = (uint32_t)(curr_sample->data);
+        DMA2_Stream7->CR |= DMA_SxCR_EN;
+    }
 }
 
 
-
-HAL_StatusTypeDef SamplingTask_HALInit(void)
+void RunSampling_NRT(void)
 {
-  RCC_ClkInitTypeDef    clkconfig;
-  uint32_t              uwTimclock = 0;
-  uint32_t              uwPrescalerValue = 0;
-  uint32_t              pFLatency;
-  HAL_StatusTypeDef        retval = HAL_ERROR;
-
-  /* Configure the IRQs */
-  HAL_NVIC_SetPriority(TIM8_UP_TIM13_IRQn , 10, 0);
-  HAL_NVIC_EnableIRQ(TIM8_UP_TIM13_IRQn);
-
-  /* Enable clocks */
-  __HAL_RCC_TIM8_CLK_ENABLE();
-
-  /* Get clock configuration */
-  HAL_RCC_GetClockConfig(&clkconfig, &pFLatency);
-
-  /* Compute TIM8 parameters */
-  uwTimclock = 2 * HAL_RCC_GetPCLK1Freq();
-  uwPrescalerValue = 72;
-
-  /* Initialize TIM8 */
-  htim8.Instance = TIM8;
-
-  htim8.Init.Period = 72 * 10 / 2;
-  htim8.Init.Prescaler = 0; //uwPrescalerValue;
-  htim8.Init.ClockDivision = 0;
-  htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
-
-  if(HAL_OK == HAL_TIM_Base_Init(&htim8))
-  {
-      HAL_TIM_Base_Start_IT(&htim8);
-      retval = HAL_OK;
-  }
-
-  if (HAL_OK == retval)
-  {
-      TIM8->CR1 |= 1;
-  }
-
-  return retval;
 }
-
 
 
 
@@ -118,6 +153,7 @@ void EXTI0_IRQHandler(void)
 {
     __HAL_GPIO_EXTI_CLEAR_FLAG(1);
     HAL_GPIO_TogglePin(GPIOG, RED_LED_Pin);
+    TIM8->CR1 &= ~(TIM_CR1_CEN);
 }
 
 

@@ -1,12 +1,5 @@
-/*
- * sampletask.h
- *
- *  Created on: Apr 14, 2020
- *      Author: dominik
- */
-
-#ifndef INC_SAMPLINGTASK_H_
-#define INC_SAMPLINGTASK_H_
+#ifndef SAMPLING_H
+#define SAMPLING_H
 
 #include "stm32f4xx_hal.h"
 #include "stm32f4xx_hal_tim.h"
@@ -31,9 +24,10 @@ typedef enum
 
 typedef struct
 {
-    int32_t baudrate;
+    uint32_t baudrate;
     SamplingMode_T sampling_mode;
     SamplingSources_T sampling_sources;
+    uint32_t sampling_rate;
 } Config_T;
 
 typedef struct Sample_Data_Tag Sample_Data_T;
@@ -45,8 +39,9 @@ struct Sample_Data_Tag
 };
 extern Sample_Data_T sample_arr[2];
 
-void StartSamplingTask(Config_T *config);
-HAL_StatusTypeDef SamplingTask_HALInit(void);
+void StartSampling(Config_T *config);
+HAL_StatusTypeDef Timer_Init(void);
 
 
-#endif /* INC_SAMPLINGTASK_H_ */
+#endif /* SAMPLING_H */
+
