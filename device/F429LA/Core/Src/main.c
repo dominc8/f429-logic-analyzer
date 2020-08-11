@@ -19,6 +19,10 @@
 #include "main.h"
 #include "stm32f429i_discovery_sdram.h"
 
+#define CMD_LEN 20
+static char rx_buffer[CMD_LEN] = { 0 };
+static uint8_t new_cmd = 0;
+
 
 static void SystemClock_Config(void);
 static void GPIO_Init(void);
@@ -52,10 +56,11 @@ int main (void)
 
     while (1)
     {
+        while (new_cmd == 0);
         // TODO: Parse Incoming Uart Data,
         // possibly change configuration (Config_T config)
         // and start transmission by calling StartSampling()
-        StartSampling(&config);
+        // StartSampling(&config);
 
         //HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
     }
@@ -112,28 +117,42 @@ static void SystemClock_Config(void)
 
 static void DMA_Uart_Init(void)
 {
-    /* DMA2 Channel4 Stream7 for USART1 initial configuration.
+    /* DMA2 Channel4 Stream7 for USART1 Tx initial configuration.
+     * DMA2 Channel4 Stream5 for USART1 Rx initial configuration.
      * The rest is configured before sampling. */
 
     __HAL_RCC_DMA2_CLK_ENABLE();
     __HAL_RCC_USART1_CLK_ENABLE();
 
     DMA2_Stream7->CR = 0;                                       /* Turn off DMA2 Stream7 */
-    DMA2->HIFCR |= (uint32_t)(0x0F400000);                      /* Clear Interrupt Status Bits */
-    DMA2_Stream7->PAR = (uint32_t)&(USART1->DR);                /* Set Peripheral Destination Address */
-    // DMA2_Stream7->M0AR = (uint32_t)(sample_arr[0].data);     /* Set Memory Source Address */
-    // DMA2_Stream7->M1AR = (uint32_t)(sample_arr[1].data);
+    DMA2_Stream5->CR = 0;                                       /* Turn off DMA2 Stream5 */
+    DMA2->HIFCR |= (uint32_t)(0x0F400F40);                      /* Clear Interrupt Status Bits */
 
-    DMA2_Stream7->CR = DMA_CHANNEL_4          |
-                       // DMA_CIRCULAR           |
-                       // DMA_SxCR_DBM           |
-                       DMA_PRIORITY_VERY_HIGH |
-                       DMA_MINC_ENABLE        |
-                       DMA_MEMORY_TO_PERIPH;
+    DMA2_Stream5->PAR  = (uint32_t)&(USART1->DR);               /* Set Peripheral Rx Source Address */
+    DMA2_Stream5->M0AR = (uint32_t)&(rx_buffer[0]);             /* Set Memory Rx Destination Address */
+    DMA2_Stream5->NDTR = CMD_LEN;
+    DMA2_Stream5->CR   = DMA_CHANNEL_4          |
+                         DMA_CIRCULAR           |
+                         // DMA_SxCR_DBM           |
+                         DMA_PRIORITY_VERY_HIGH |
+                         DMA_MINC_ENABLE        |
+                         DMA_PERIPH_TO_MEMORY   |
+                         DMA_IT_TC              |
+                         DMA_SxCR_EN;
 
-    USART1->SR = 0;
+    DMA2_Stream7->PAR  = (uint32_t)&(USART1->DR);                /* Set Peripheral Tx Destination Address */
+    DMA2_Stream7->CR   = DMA_CHANNEL_4          |
+                         DMA_PRIORITY_VERY_HIGH |
+                         DMA_MINC_ENABLE        |
+                         DMA_MEMORY_TO_PERIPH;
+
+    USART1->SR  = 0;
     USART1->CR1 = UART_STATE_ENABLE | UART_MODE_TX_RX;
-    USART1->CR3 = USART_CR3_DMAT;
+    USART1->CR3 = USART_CR3_DMAR | USART_CR3_DMAT;
+
+
+    HAL_NVIC_SetPriority(DMA2_Stream5_IRQn, 8, 0);
+    HAL_NVIC_EnableIRQ(DMA2_Stream5_IRQn);
 }
 
 
@@ -249,6 +268,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 void Error_Handler(void)
 {
+}
+
+
+void DMA2_Stream5_IRQHandler(void)
+{
+    USART1->CR3 &= ~USART_CR3_DMAR;
+    HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
 }
 
 #ifdef  USE_FULL_ASSERT

@@ -30,6 +30,7 @@ void StartSampling(Config_T *config)
     // TODO: Change pointer to function to be called in interrupt
     // Configure sampling sources
 
+#if 0
     sampling_enabled = 1;
 
     /* Reset and restart timer */
@@ -48,6 +49,7 @@ void StartSampling(Config_T *config)
         default:
             break;
     }
+#endif
 }
 
 HAL_StatusTypeDef Timer_Init(void)
