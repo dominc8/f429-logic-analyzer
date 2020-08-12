@@ -21,12 +21,13 @@
 
 #define CMD_LEN 20
 static char rx_buffer[CMD_LEN] = { 0 };
-static uint8_t new_cmd = 0;
+static volatile uint8_t new_cmd = 0;
 
 
 static void SystemClock_Config(void);
 static void GPIO_Init(void);
 static void DMA_Uart_Init(void);
+static void ParseCommand(Config_T *config);
 
 
 int main (void)
@@ -42,13 +43,13 @@ int main (void)
 
     DMA_Uart_Init();
 
-    while (HAL_OK != Timer_Init())
-    {
-    }
+    // while (HAL_OK != Timer_Init())
+    // {
+    // }
 
     Config_T config =
     {
-        .baudrate = 2000000,
+        .baudrate = 115200,
         .sampling_mode = RT,
         .sampling_sources = EIGHT,
         .sampling_rate = 200000,
@@ -57,6 +58,11 @@ int main (void)
     while (1)
     {
         while (new_cmd == 0);
+
+        ParseCommand(&config);
+
+        new_cmd = 0;
+        USART1->CR3 |= USART_CR3_DMAR;
         // TODO: Parse Incoming Uart Data,
         // possibly change configuration (Config_T config)
         // and start transmission by calling StartSampling()
@@ -147,7 +153,8 @@ static void DMA_Uart_Init(void)
                          DMA_MEMORY_TO_PERIPH;
 
     USART1->SR  = 0;
-    USART1->CR1 = UART_STATE_ENABLE | UART_MODE_TX_RX;
+    USART1->BRR = UART_BRR_SAMPLING16(HAL_RCC_GetPCLK2Freq(), 115200);
+    USART1->CR1 = UART_STATE_ENABLE | UART_MODE_TX_RX | UART_FLAG_RXNE;
     USART1->CR3 = USART_CR3_DMAR | USART_CR3_DMAT;
 
 
@@ -251,6 +258,12 @@ static void GPIO_Init(void)
 
 }
 
+void ParseCommand(Config_T *config)
+{
+}
+
+
+
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
@@ -273,8 +286,10 @@ void Error_Handler(void)
 
 void DMA2_Stream5_IRQHandler(void)
 {
+	DMA2->HIFCR = (uint32_t)(0x00000F40);
     USART1->CR3 &= ~USART_CR3_DMAR;
     HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
+    new_cmd = 1;
 }
 
 #ifdef  USE_FULL_ASSERT
