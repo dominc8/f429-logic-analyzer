@@ -30,20 +30,20 @@ void StartSampling(Config_T *config)
     // TODO: Change pointer to function to be called in interrupt
     // Configure sampling sources
 
-#if 0
+#if 1
     sampling_enabled = 1;
 
     /* Reset and restart timer */
-    TIM8->ARR = 2 * HAL_RCC_GetPCLK1Freq() / config->sampling_rate; // ?
+    TIM8->ARR = 2 * HAL_RCC_GetPCLK1Freq() / config->sampling_freq; // ?
     TIM8->CNT = 0;
     TIM8->CR1 |= TIM_CR1_CEN;
 
     switch (config->sampling_mode)
     {
-        case RT:
+        case SamplingMode_RT:
             RunSampling_RT();
             break;
-        case NRT:
+        case SamplingMode_NRT:
             RunSampling_NRT();
             break;
         default:
@@ -82,7 +82,7 @@ HAL_StatusTypeDef Timer_Init(void)
 
   if(HAL_OK == HAL_TIM_Base_Init(&htim8))
   {
-      HAL_TIM_Base_Start_IT(&htim8);
+      __HAL_TIM_ENABLE_IT(&htim8, TIM_IT_UPDATE); /* HAL_TIM_Base_Start_IT(&htim8) but without starting timer just yet */
       retval = HAL_OK;
   }
 
@@ -92,10 +92,16 @@ HAL_StatusTypeDef Timer_Init(void)
 
 void RunSampling_RT(void)
 {
+    int32_t left_samples;
 
     while(sampling_enabled)
     {
-        while (ready_to_transmission == 0);
+        while (ready_to_transmission == 0)
+        {
+        	if (sampling_enabled == 0)
+                goto leave_loop;
+        }
+
         ready_to_transmission = 0;
 
         USART1->SR = ~UART_FLAG_TC;
@@ -108,8 +114,9 @@ void RunSampling_RT(void)
         HAL_GPIO_TogglePin(GPIOG, RED_LED_Pin);
     }
 
-    int32_t left_samples = (int32_t)sample_ptr - (int32_t)curr_sample->data;
 
+leave_loop:
+    left_samples = (int32_t)sample_ptr - (int32_t)curr_sample->data;
     if ((left_samples > 0) && (left_samples < SAMPLES_SIZE))
     {
         USART1->SR = ~UART_FLAG_TC;
@@ -156,6 +163,8 @@ void EXTI0_IRQHandler(void)
     __HAL_GPIO_EXTI_CLEAR_FLAG(1);
     HAL_GPIO_TogglePin(GPIOG, RED_LED_Pin);
     TIM8->CR1 &= ~(TIM_CR1_CEN);
+    sampling_enabled = 0;
+    ready_to_transmission = 1;
 }
 
 

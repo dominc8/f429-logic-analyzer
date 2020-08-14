@@ -15,20 +15,37 @@
 -  *
 -  ******************************************************************************
 -  */
-#include "sampling.h"
 #include "main.h"
+#include "sampling.h"
 #include "stm32f429i_discovery_sdram.h"
 
-#define CMD_LEN 20
-static char rx_buffer[CMD_LEN] = { 0 };
-static volatile uint8_t new_cmd = 0;
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
 
+
+#define RXBUF_LEN 20
+
+
+typedef enum
+{
+    Command_RUN = 0,
+    Command_BAUD,
+    Command_MODE,
+    Command_SRC,
+    Command_FREQ,
+    Command_COUNT
+} Command_T;
+
+
+static char rx_buffer[RXBUF_LEN + 1] = { 0 };
+static volatile uint8_t new_cmd = 0;
+static char* cmds[Command_COUNT] = { "run", "baud", "mode", "src", "freq" };
 
 static void SystemClock_Config(void);
 static void GPIO_Init(void);
 static void DMA_Uart_Init(void);
-static void ParseCommand(Config_T *config);
-
+static Command_T ParseCommand(Config_T *config);
 
 int main (void)
 {
@@ -43,32 +60,33 @@ int main (void)
 
     DMA_Uart_Init();
 
-    // while (HAL_OK != Timer_Init())
-    // {
-    // }
+    while (HAL_OK != Timer_Init())
+    {
+    }
 
     Config_T config =
     {
         .baudrate = 115200,
-        .sampling_mode = RT,
-        .sampling_sources = EIGHT,
-        .sampling_rate = 200000,
+        .sampling_mode = SamplingMode_RT,
+        .sampling_sources = SamplingSources_EIGHT,
+        .sampling_freq = 1000,
     };
 
     while (1)
     {
-        while (new_cmd == 0);
+        uint8_t command_detected = Command_COUNT;
+        while (command_detected != Command_RUN)
+        {
+            while (new_cmd == 0);
+            command_detected = ParseCommand(&config);
+            if (command_detected == Command_COUNT)
+            {
+            }
 
-        ParseCommand(&config);
-
-        new_cmd = 0;
-        USART1->CR3 |= USART_CR3_DMAR;
-        // TODO: Parse Incoming Uart Data,
-        // possibly change configuration (Config_T config)
-        // and start transmission by calling StartSampling()
-        // StartSampling(&config);
-
-        //HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
+            new_cmd = 0;
+            USART1->CR3 |= USART_CR3_DMAR;
+        }
+        StartSampling(&config);
     }
 }
 
@@ -136,7 +154,7 @@ static void DMA_Uart_Init(void)
 
     DMA2_Stream5->PAR  = (uint32_t)&(USART1->DR);               /* Set Peripheral Rx Source Address */
     DMA2_Stream5->M0AR = (uint32_t)&(rx_buffer[0]);             /* Set Memory Rx Destination Address */
-    DMA2_Stream5->NDTR = CMD_LEN;
+    DMA2_Stream5->NDTR = RXBUF_LEN;
     DMA2_Stream5->CR   = DMA_CHANNEL_4          |
                          DMA_CIRCULAR           |
                          // DMA_SxCR_DBM           |
@@ -258,8 +276,141 @@ static void GPIO_Init(void)
 
 }
 
-void ParseCommand(Config_T *config)
+Command_T ParseCommand(Config_T *config)
 {
+    Command_T command_detected = Command_COUNT;
+
+    char *start_cmd = NULL;
+    char *end_cmd = NULL;
+    char *start_arg = NULL;
+    char *end_arg = NULL;
+    char *ptr = &rx_buffer[0];
+
+    while (ptr < rx_buffer + RXBUF_LEN)
+    {
+        if (start_cmd == NULL)
+        {
+            if (isalnum(*ptr))
+            {
+                start_cmd = ptr;
+            }
+            else
+            {
+                ++ptr;
+            }
+
+        }
+        else if (end_cmd == NULL)
+        {
+            if (!isalnum(*ptr))
+            {
+                end_cmd = ptr - 1;
+            }
+            else
+            {
+                ++ptr;
+            }
+        }
+        else if (start_arg == NULL)
+        {
+            if (isalnum(*ptr))
+            {
+                start_arg = ptr;
+            }
+            else
+            {
+                ++ptr;
+            }
+
+        }
+        else if (end_arg == NULL)
+        {
+            if (!isalnum(*ptr))
+            {
+                end_arg = ptr - 1;
+                *ptr = '\0';
+                break;
+            }
+            else
+            {
+                ++ptr;
+            }
+        }
+    }
+
+
+    if (end_cmd == NULL) return command_detected;
+
+
+    for (int32_t i = 0; i < (int32_t)Command_COUNT; ++i)
+    {
+        size_t cmd_len = end_cmd - start_cmd + 1;
+        if (cmd_len < strlen(cmds[i])) cmd_len = strlen(cmds[i]);
+        if (strncmp(start_cmd, cmds[i], cmd_len) == 0)
+        {
+            command_detected = (Command_T)i;
+            break;
+        }
+    }
+
+    switch (command_detected)
+    {
+        case Command_BAUD:
+        {
+            if (end_arg == NULL) break;
+            unsigned long int baudrate = strtoul(start_arg, NULL, 0);
+            if (baudrate > 0 && baudrate <= 2000000)
+            {
+                // printf("Command BAUD detected, changing baudrate to %lu\n", baudrate);
+                config->baudrate = (uint32_t)baudrate;
+            }
+            break;
+        }
+        case Command_MODE:
+        {
+            if (end_arg == NULL) break;
+            switch (*start_arg - '0')
+            {
+                case SamplingMode_RT:
+                case SamplingMode_NRT:
+                    // printf("Command MODE detected, changing sampling mode to %c\n", *start_arg);
+                    config->sampling_mode = (SamplingMode_T)(*start_arg - '0');
+            }
+            break;
+        }
+        case Command_SRC:
+        {
+            if (end_arg == NULL) break;
+            switch (*start_arg - '0')
+            {
+                case SamplingSources_ONE:
+                case SamplingSources_TWO:
+                case SamplingSources_FOUR:
+                case SamplingSources_EIGHT:
+                    // printf("Command SRC detected, changing sampling sources to %c\n", *start_arg);
+                    config->sampling_sources = (SamplingSources_T)(*start_arg - '0');
+            }
+            break;
+        }
+        case Command_FREQ:
+        {
+            if (end_arg == NULL) break;
+            unsigned long int frequency = strtoul(start_arg, NULL, 0);
+            if (frequency > 0 && frequency <= 1000000)
+            {
+                // printf("Command FREQ detected, changing sampling frequency to %lu\n", frequency);
+                config->sampling_freq = (uint32_t)frequency;
+            }
+            break;
+        }
+        case Command_RUN:
+        case Command_COUNT:
+        default:
+        {
+        }
+    }
+
+    return command_detected;
 }
 
 
