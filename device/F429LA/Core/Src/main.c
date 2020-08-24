@@ -15,14 +15,37 @@
 -  *
 -  ******************************************************************************
 -  */
-#include "samplingtask.h"
 #include "main.h"
+#include "sampling.h"
 #include "stm32f429i_discovery_sdram.h"
 
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
 
+
+#define RXBUF_LEN 20
+
+
+typedef enum
+{
+    Command_RUN = 0,
+    Command_BAUD,
+    Command_MODE,
+    Command_SRC,
+    Command_FREQ,
+    Command_COUNT
+} Command_T;
+
+
+static char rx_buffer[RXBUF_LEN + 1] = { 0 };
+static volatile uint8_t new_cmd = 0;
+static char* cmds[Command_COUNT] = { "run", "baud", "mode", "src", "freq" };
+
+static void SystemClock_Config(void);
 static void GPIO_Init(void);
-static void UART_Init(void);
-
+static void DMA_Uart_Init(void);
+static Command_T ParseCommand(Config_T *config);
 
 int main (void)
 {
@@ -32,40 +55,53 @@ int main (void)
 
     if (BSP_SDRAM_Init() == SDRAM_OK)
     {
-    	HAL_GPIO_TogglePin(GPIOG, LD3_Pin);
-    }
-    else
-    {
-    	HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
+        HAL_GPIO_TogglePin(GPIOG, LD3_Pin);
     }
 
-    UART_Init();
+    DMA_Uart_Init();
 
-    while (HAL_OK != SamplingTask_HALInit())
+    while (HAL_OK != Timer_Init())
     {
     }
 
-
-    StartSamplingTask(NULL);
+    Config_T config =
+    {
+        .baudrate = 115200,
+        .sampling_mode = SamplingMode_RT,
+        .sampling_sources = SamplingSources_EIGHT,
+        .sampling_freq = 1000,
+    };
 
     while (1)
     {
-    	//HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
+        uint8_t command_detected = Command_COUNT;
+        while (command_detected != Command_RUN)
+        {
+            while (new_cmd == 0);
+            command_detected = ParseCommand(&config);
+            if (command_detected == Command_COUNT)
+            {
+            }
+
+            new_cmd = 0;
+            USART1->CR3 |= USART_CR3_DMAR;
+        }
+        StartSampling(&config);
     }
 }
 
 
-void SystemClock_Config(void)
+static void SystemClock_Config(void)
 {
     RCC_OscInitTypeDef RCC_OscInitStruct = {0};
     RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
     RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
 
-    /** Configure the main internal regulator output voltage 
+    /** Configure the main internal regulator output voltage
     */
     __HAL_RCC_PWR_CLK_ENABLE();
     __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
-    /** Initializes the CPU, AHB and APB busses clocks 
+    /** Initializes the CPU, AHB and APB busses clocks
     */
     RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
     RCC_OscInitStruct.HSEState = RCC_HSE_ON;
@@ -79,7 +115,7 @@ void SystemClock_Config(void)
     {
       Error_Handler();
     }
-    /** Initializes the CPU, AHB and APB busses clocks 
+    /** Initializes the CPU, AHB and APB busses clocks
     */
     RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                                 |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
@@ -103,32 +139,45 @@ void SystemClock_Config(void)
 }
 
 
-static void UART_Init(void)
+static void DMA_Uart_Init(void)
 {
-	/* USART1 and DMA2 Channel4 Stream7 */
+    /* DMA2 Channel4 Stream7 for USART1 Tx initial configuration.
+     * DMA2 Channel4 Stream5 for USART1 Rx initial configuration.
+     * The rest is configured before sampling. */
 
     __HAL_RCC_DMA2_CLK_ENABLE();
-	__HAL_RCC_USART1_CLK_ENABLE();
+    __HAL_RCC_USART1_CLK_ENABLE();
 
-	DMA2_Stream7->CR = 0;									/* Turn off DMA2 Stream7 */
-	DMA2->HIFCR |= (uint32_t)(0x0F400000);					/* Clear Interrupt Status Bits */
-	DMA2_Stream7->PAR = (uint32_t)&(USART1->DR);			/* Set Peripheral Destination Address */
-	// DMA2_Stream7->M0AR = (uint32_t)(sample_arr[0].data);	/* Set Memory Source Address */
-	// DMA2_Stream7->M1AR = (uint32_t)(sample_arr[1].data);
-	DMA2_Stream7->NDTR = SAMPLES_SIZE;						/* Size of single trasfer */
+    DMA2_Stream7->CR = 0;                                       /* Turn off DMA2 Stream7 */
+    DMA2_Stream5->CR = 0;                                       /* Turn off DMA2 Stream5 */
+    DMA2->HIFCR |= (uint32_t)(0x0F400F40);                      /* Clear Interrupt Status Bits */
 
-	DMA2_Stream7->CR = DMA_CHANNEL_4          |
-					   // DMA_CIRCULAR			  |
-                       // DMA_SxCR_DBM           |
-	                   DMA_PRIORITY_VERY_HIGH |
-	                   DMA_MINC_ENABLE		  |
-					   DMA_MEMORY_TO_PERIPH;
+    DMA2_Stream5->PAR  = (uint32_t)&(USART1->DR);               /* Set Peripheral Rx Source Address */
+    DMA2_Stream5->M0AR = (uint32_t)&(rx_buffer[0]);             /* Set Memory Rx Destination Address */
+    DMA2_Stream5->NDTR = RXBUF_LEN;
+    DMA2_Stream5->CR   = DMA_CHANNEL_4          |
+                         DMA_CIRCULAR           |
+                         // DMA_SxCR_DBM           |
+                         DMA_PRIORITY_VERY_HIGH |
+                         DMA_MINC_ENABLE        |
+                         DMA_PERIPH_TO_MEMORY   |
+                         DMA_IT_TC              |
+                         DMA_SxCR_EN;
+
+    DMA2_Stream7->PAR  = (uint32_t)&(USART1->DR);                /* Set Peripheral Tx Destination Address */
+    DMA2_Stream7->CR   = DMA_CHANNEL_4          |
+                         DMA_PRIORITY_VERY_HIGH |
+                         DMA_MINC_ENABLE        |
+                         DMA_MEMORY_TO_PERIPH;
+
+    USART1->SR  = 0;
+    USART1->BRR = UART_BRR_SAMPLING16(HAL_RCC_GetPCLK2Freq(), 115200);
+    USART1->CR1 = UART_STATE_ENABLE | UART_MODE_TX_RX | UART_FLAG_RXNE;
+    USART1->CR3 = USART_CR3_DMAR | USART_CR3_DMAT;
 
 
-    USART1->SR = 0;
-    USART1->BRR = 0x00000024; /* baudrate 2Mb/s when clock is 72 MHz */
-    USART1->CR1 = UART_STATE_ENABLE | UART_MODE_TX_RX;
-    USART1->CR3 = USART_CR3_DMAT;
+    HAL_NVIC_SetPriority(DMA2_Stream5_IRQn, 8, 0);
+    HAL_NVIC_EnableIRQ(DMA2_Stream5_IRQn);
 }
 
 
@@ -227,18 +276,151 @@ static void GPIO_Init(void)
 
 }
 
+Command_T ParseCommand(Config_T *config)
+{
+    Command_T command_detected = Command_COUNT;
+
+    char *start_cmd = NULL;
+    char *end_cmd = NULL;
+    char *start_arg = NULL;
+    char *end_arg = NULL;
+    char *ptr = &rx_buffer[0];
+
+    while (ptr < rx_buffer + RXBUF_LEN)
+    {
+        if (start_cmd == NULL)
+        {
+            if (isalnum(*ptr))
+            {
+                start_cmd = ptr;
+            }
+            else
+            {
+                ++ptr;
+            }
+
+        }
+        else if (end_cmd == NULL)
+        {
+            if (!isalnum(*ptr))
+            {
+                end_cmd = ptr - 1;
+            }
+            else
+            {
+                ++ptr;
+            }
+        }
+        else if (start_arg == NULL)
+        {
+            if (isalnum(*ptr))
+            {
+                start_arg = ptr;
+            }
+            else
+            {
+                ++ptr;
+            }
+
+        }
+        else if (end_arg == NULL)
+        {
+            if (!isalnum(*ptr))
+            {
+                end_arg = ptr - 1;
+                *ptr = '\0';
+                break;
+            }
+            else
+            {
+                ++ptr;
+            }
+        }
+    }
+
+
+    if (end_cmd == NULL) return command_detected;
+
+
+    for (int32_t i = 0; i < (int32_t)Command_COUNT; ++i)
+    {
+        size_t cmd_len = end_cmd - start_cmd + 1;
+        if (cmd_len < strlen(cmds[i])) cmd_len = strlen(cmds[i]);
+        if (strncmp(start_cmd, cmds[i], cmd_len) == 0)
+        {
+            command_detected = (Command_T)i;
+            break;
+        }
+    }
+
+    switch (command_detected)
+    {
+        case Command_BAUD:
+        {
+            if (end_arg == NULL) break;
+            unsigned long int baudrate = strtoul(start_arg, NULL, 0);
+            if (baudrate > 0 && baudrate <= 2000000)
+            {
+                // printf("Command BAUD detected, changing baudrate to %lu\n", baudrate);
+                config->baudrate = (uint32_t)baudrate;
+            }
+            break;
+        }
+        case Command_MODE:
+        {
+            if (end_arg == NULL) break;
+            switch (*start_arg - '0')
+            {
+                case SamplingMode_RT:
+                case SamplingMode_NRT:
+                    // printf("Command MODE detected, changing sampling mode to %c\n", *start_arg);
+                    config->sampling_mode = (SamplingMode_T)(*start_arg - '0');
+            }
+            break;
+        }
+        case Command_SRC:
+        {
+            if (end_arg == NULL) break;
+            switch (*start_arg - '0')
+            {
+                case SamplingSources_ONE:
+                case SamplingSources_TWO:
+                case SamplingSources_FOUR:
+                case SamplingSources_EIGHT:
+                    // printf("Command SRC detected, changing sampling sources to %c\n", *start_arg);
+                    config->sampling_sources = (SamplingSources_T)(*start_arg - '0');
+            }
+            break;
+        }
+        case Command_FREQ:
+        {
+            if (end_arg == NULL) break;
+            unsigned long int frequency = strtoul(start_arg, NULL, 0);
+            if (frequency > 0 && frequency <= 1000000)
+            {
+                // printf("Command FREQ detected, changing sampling frequency to %lu\n", frequency);
+                config->sampling_freq = (uint32_t)frequency;
+            }
+            break;
+        }
+        case Command_RUN:
+        case Command_COUNT:
+        default:
+        {
+        }
+    }
+
+    return command_detected;
+}
+
+
+
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-    /* USER CODE BEGIN Callback 0 */
-
-    /* USER CODE END Callback 0 */
     if (htim->Instance == TIM6) {
       HAL_IncTick();
     }
-    /* USER CODE BEGIN Callback 1 */
-
-    /* USER CODE END Callback 1 */
 }
 
 
@@ -246,19 +428,17 @@ void Error_Handler(void)
 {
 }
 
+
+void DMA2_Stream5_IRQHandler(void)
+{
+	DMA2->HIFCR = (uint32_t)(0x00000F40);
+    USART1->CR3 &= ~USART_CR3_DMAR;
+    HAL_GPIO_TogglePin(GPIOG, LD4_Pin);
+    new_cmd = 1;
+}
+
 #ifdef  USE_FULL_ASSERT
-/**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
 void assert_failed(uint8_t *file, uint32_t line)
 { 
-    /* USER CODE BEGIN 6 */
-    /* User can add his own implementation to report the file name and line number,
-       tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-    /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
