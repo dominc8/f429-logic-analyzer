@@ -14,10 +14,10 @@ The timer triggers interrupt routine which reads proper pins and saves them to t
 
 Commands have to be sent individually with fixed size of 20 chars, i.e. to send **run** command one has to send "run" and 17 chars being i.e. nulls or spaces. It is required because receiving chars through UART is done via DMA which triggers interrupt after receiving 20 bytes of data.
 
+#### UI app
+UI application was made in Java. It serves as a user-devices interface. It has the ability to show different data channels (up to 4 charts can be comfortably showed).
+It also can send commands (listed above) to the device. Moreover user can change time of measurement which will be plotted on the charts.
+
 ##### Tested "limits"
 * Sampling 8 pins simultaneously with frequency of 200 kHz and sending them through 2M baudrate UART
-
-
-
-
 
