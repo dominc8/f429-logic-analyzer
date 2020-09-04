@@ -1,45 +1,40 @@
 package logic.analyzer;
 
 import javafx.application.Application;
-import javafx.fxml.FXMLLoader;
-import javafx.geometry.Insets;
 import javafx.scene.Scene;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Button;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.stage.Stage;
 
+import java.beans.EventHandler;
+
 
 public class Main extends Application
 {
-    Button button;
+    private static final boolean DEBUG_MODE = false;
 
-    public static void main(String[] args)
-    {
+    public static void main(String[] args) {
         launch(args);
     }
 
     @Override
-    public void start(Stage primaryStage) throws Exception
-    {
-        primaryStage.setTitle("Logic Analyzer v1.0");
+    public void start(Stage primaryStage) throws Exception {
 
-        BorderPane mainLayout = new BorderPane();
-        HBox menuBar = Layout.menuBar();
-        GridPane mainBody = Layout.mainBody();
+        DataCollector dataCollector = new DataCollector();
+        USBHandler usbHandler = new USBHandler(dataCollector);
+        usbHandler.showMeWhatIsInside();
 
-        // Create some charts to display
-        Chart.addChartsToLayout(mainBody, 3);
+        if (!DEBUG_MODE) {
+            primaryStage.setTitle("Logic Analyzer v2.0");
 
-        mainLayout.setTop(menuBar);
-        mainLayout.setCenter(mainBody);
+            HBox menuBar = Layout.menuBar(usbHandler);
 
-        Scene scene = new Scene(mainLayout);
-        scene.getStylesheets().add("LineChart.css");
-        primaryStage.setScene(scene);
+            Scene scene = new Scene(menuBar);
+            scene.getStylesheets().add("LineChart.css");
+            primaryStage.setScene(scene);
 
-        primaryStage.show();
+            primaryStage.show();
+        }
     }
 }

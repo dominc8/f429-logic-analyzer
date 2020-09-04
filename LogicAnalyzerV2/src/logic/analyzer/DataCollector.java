@@ -2,10 +2,17 @@ package logic.analyzer;
 
 import javafx.scene.chart.XYChart;
 
+import java.util.List;
 import java.util.Random;
 
 public class DataCollector {
+
     private XYChart.Series<Number, Number> collectedData;
+    private List<Integer> channelStates;
+    DataCollector() {
+        collectedData = generateSampleData(100,2);
+    }
+
     public static XYChart.Series<Number, Number> generateSampleData(int sampleCount, int maxYValue)
     {
         //Generate random data
@@ -21,12 +28,18 @@ public class DataCollector {
 
         return data;
     }
-    public void setCollectedData( XYChart.Series<Number, Number> dataIn)
+    void setCollectedData(XYChart.Series<Number, Number> dataIn, List<Integer> collectedChannelStatesIn)
     {
         this.collectedData = dataIn;
+        this.channelStates = collectedChannelStatesIn;
     }
-    public XYChart.Series<Number, Number> getCollectedData()
+    XYChart.Series<Number, Number> getCollectedData()
     {
         return this.collectedData;
+    }
+
+    List<Integer> getChannelStates()
+    {
+        return this.channelStates;
     }
 }
