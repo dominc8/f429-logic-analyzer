@@ -3,79 +3,80 @@ package main
 import (
 	"time"
 	"github.com/tarm/serial"
-	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
     "log"
-    "fmt"
     "strconv"
+    "unicode"
 )
 
-var (
-    newbaudrate string
+
+type device_config struct {
+    mode string
     baudrate int
     sampling_freq int
+}
+
+var (
+    config device_config
     app *tview.Application
     list *tview.List
-    input_field *tview.InputField
+    form *tview.Form
 )
 
 func cmd_run() {
     log.Printf("[STUB] Send run command")
 }
 
-func cmd_baud() {
-    app.SetFocus(input_field)
-    //log.Printf("[STUB] Send baud command")
+func mode_select_callback(option string, optionIndex int) {
+    config.mode = option
 }
 
-func draw_text_line(screen tcell.Screen, str string, x int, y *int, width int) {
-    tview.Print(screen, str, x, *y, width, tview.AlignCenter, tcell.ColorLime)
-    *y++
+func baud_select_callback(text string) {
+    config.baudrate, _ = strconv.Atoi(text)
 }
 
-func draw_config(screen tcell.Screen, x int, y int, width int, height int)  (int, int, int, int) {
-    y++
-
-    draw_text_line(screen, "Mode: RT", x, &y, width)
-    draw_text_line(screen, fmt.Sprintf("Baud: %v", baudrate), x, &y, width)
-    draw_text_line(screen, fmt.Sprintf("Sampling frequency: %vHz", sampling_freq), x, &y, width)
-
-    return 0, 0, 0, 0
+func sampling_freq_select_callback(text string) {
+    config.sampling_freq, _ = strconv.Atoi(text)
 }
+
+func update_config() {
+    log.Printf("[STUB] %v %v %v", config.mode, config.baudrate, config.sampling_freq)
+    app.SetFocus(list)
+}
+
+func validate_unsigned_int(testToCheck string, lastChar rune) bool {
+    return unicode.IsDigit(lastChar)
+}
+
 
 func main() {
-    baudrate = 115200
-    sampling_freq = 1000
+    config.mode = "RT"
+    config.baudrate = 115200
+    config.sampling_freq = 1000
     app = tview.NewApplication()
     list = tview.NewList().
                 AddItem("Start sampling", "", 'a', cmd_run).
-                AddItem("Set baud rate", "", 'b', cmd_baud).
+                AddItem("Configure parameters", "", 'b', func() {
+                    app.SetFocus(form)
+                }).
                 AddItem("Quit", "", 'q', func() {
                     app.Stop()
                 })
 
-    input_field = tview.NewInputField().
-		SetLabel("Baud rate: ").
-		SetFieldWidth(10).
-		SetAcceptanceFunc(tview.InputFieldInteger).
-        SetChangedFunc(func(text string) {
-            newbaudrate = text
-        }).
-		SetDoneFunc(func(key tcell.Key) {
-            if key == tcell.KeyEnter {
-                newbaud, err := strconv.Atoi(newbaudrate)
-                if err == nil {
-			        baudrate = newbaud
-                }
-            }
-            input_field.SetText("")
+    form = tview.NewForm().
+		AddDropDown("Mode", []string{"RT", "NRT"}, 0, mode_select_callback).
+		AddInputField("Baud rate", "115200", 10, validate_unsigned_int, baud_select_callback).
+		AddInputField("Sampling frequency", "1000", 10, validate_unsigned_int, sampling_freq_select_callback).
+		AddButton("Save", update_config).
+        SetCancelFunc(func() {
             app.SetFocus(list)
-		})
+        })
+
+	form.SetBorder(true).SetTitle("Configuration").SetTitleAlign(tview.AlignCenter)
 
     flex := tview.NewFlex().
                 AddItem(list, 0, 1, true).
-                AddItem(tview.NewBox().SetBorder(true).SetDrawFunc(draw_config), 0, 4, false).
-                AddItem(input_field, 0, 1, false)
+                AddItem(form, 0, 4, false)
 
     if err := app.SetRoot(flex, true).SetFocus(flex).Run(); err != nil {
         panic(err)
