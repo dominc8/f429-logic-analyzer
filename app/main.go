@@ -7,11 +7,16 @@ import (
 	"github.com/rivo/tview"
     "log"
     "fmt"
+    "strconv"
 )
 
 var (
+    newbaudrate string
     baudrate int
     sampling_freq int
+    app *tview.Application
+    list *tview.List
+    input_field *tview.InputField
 )
 
 func cmd_run() {
@@ -19,7 +24,8 @@ func cmd_run() {
 }
 
 func cmd_baud() {
-    log.Printf("[STUB] Send baud command")
+    app.SetFocus(input_field)
+    //log.Printf("[STUB] Send baud command")
 }
 
 func draw_text_line(screen tcell.Screen, str string, x int, y *int, width int) {
@@ -40,16 +46,37 @@ func draw_config(screen tcell.Screen, x int, y int, width int, height int)  (int
 func main() {
     baudrate = 115200
     sampling_freq = 1000
-    app := tview.NewApplication()
-    list := tview.NewList().
+    app = tview.NewApplication()
+    list = tview.NewList().
                 AddItem("Start sampling", "", 'a', cmd_run).
                 AddItem("Set baud rate", "", 'b', cmd_baud).
                 AddItem("Quit", "", 'q', func() {
                     app.Stop()
                 })
+
+    input_field = tview.NewInputField().
+		SetLabel("Baud rate: ").
+		SetFieldWidth(10).
+		SetAcceptanceFunc(tview.InputFieldInteger).
+        SetChangedFunc(func(text string) {
+            newbaudrate = text
+        }).
+		SetDoneFunc(func(key tcell.Key) {
+            if key == tcell.KeyEnter {
+                newbaud, err := strconv.Atoi(newbaudrate)
+                if err == nil {
+			        baudrate = newbaud
+                }
+            }
+            input_field.SetText("")
+            app.SetFocus(list)
+		})
+
     flex := tview.NewFlex().
                 AddItem(list, 0, 1, true).
-                AddItem(tview.NewBox().SetBorder(true).SetDrawFunc(draw_config), 0, 4, false)
+                AddItem(tview.NewBox().SetBorder(true).SetDrawFunc(draw_config), 0, 4, false).
+                AddItem(input_field, 0, 1, false)
+
     if err := app.SetRoot(flex, true).SetFocus(flex).Run(); err != nil {
         panic(err)
     }
