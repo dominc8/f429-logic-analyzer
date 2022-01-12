@@ -54,6 +54,7 @@ func send_command(text string) {
 }
 
 func cmd_run() {
+    serial_port.Flush()
     send_command("run")
     go read_data()
 }
@@ -81,7 +82,7 @@ func connect_to_device() {
 }
 
 func read_data() {
-    outf, _ := os.Create("tmp_data.bin")
+    outf, _ := os.OpenFile("tmp_data.bin", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
     defer outf.Close()
     buf := make([]byte, 256)
 
