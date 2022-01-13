@@ -19,29 +19,29 @@ type device_config struct {
     sampling_sources int
 }
 
+func (cfg device_config) init() {
+    cfg.mode = 0
+    cfg.baudrate = 115200
+    cfg.sampling_freq = 1000
+    cfg.sampling_sources = 8
+}
+
+func (cfg device_config) update() {
+    send_command(fmt.Sprintf("mode %v", cfg.mode))
+    send_command(fmt.Sprintf("baud %v", cfg.baudrate))
+    send_command(fmt.Sprintf("freq %v", cfg.sampling_freq))
+    send_command(fmt.Sprintf("src %v", cfg.sampling_sources))
+}
+
 var (
-    log_file *os.File
     serial_port *serial.Port
-    config device_config
     app *tview.Application
     list *tview.List
     form *tview.Form
 )
 
-func mode_select_callback(option string, optionIndex int) {
-    config.mode = optionIndex
-}
-
-func baud_select_callback(text string) {
-    config.baudrate, _ = strconv.Atoi(text)
-}
-
-func sampling_freq_select_callback(text string) {
-    config.sampling_freq, _ = strconv.Atoi(text)
-}
-
-func sampling_sources_select_callback(option string, optionIndex int) {
-    config.sampling_sources, _ = strconv.Atoi(option)
+func validate_unsigned_int(testToCheck string, lastChar rune) bool {
+    return unicode.IsDigit(lastChar)
 }
 
 func send_command(text string) {
@@ -56,19 +56,7 @@ func send_command(text string) {
 func cmd_run() {
     serial_port.Flush()
     send_command("run")
-    go read_data()
-}
-
-func update_config() {
-    send_command(fmt.Sprintf("mode %v", config.mode))
-    send_command(fmt.Sprintf("baud %v", config.baudrate))
-    send_command(fmt.Sprintf("freq %v", config.sampling_freq))
-    send_command(fmt.Sprintf("src %v", config.sampling_sources))
-    app.SetFocus(list)
-}
-
-func validate_unsigned_int(testToCheck string, lastChar rune) bool {
-    return unicode.IsDigit(lastChar)
+    go read_data() // TODO: this is probably neverending routine, so what happens if someone starts sampling, stops and then starts again?
 }
 
 func connect_to_device() {
@@ -97,12 +85,10 @@ func read_data() {
 }
 
 func main() {
-    config.mode = 0
-    config.baudrate = 115200
-    config.sampling_freq = 1000
-    config.sampling_sources = 8
+    var config device_config
+    config.init()
 
-    log_file, _ = os.OpenFile("log.txt", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+    log_file, _ := os.OpenFile("log.txt", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
     defer log_file.Close()
     log.SetOutput(log_file)
     log.SetFlags(log.Lshortfile|log.LstdFlags)
@@ -118,11 +104,22 @@ func main() {
                 })
 
     form = tview.NewForm().
-                AddDropDown("Mode", []string{"RT", "NRT"}, 0, mode_select_callback).
-                AddInputField("Baud rate", "115200", 10, validate_unsigned_int, baud_select_callback).
-                AddInputField("Sampling frequency", "1000", 10, validate_unsigned_int, sampling_freq_select_callback).
-                AddDropDown("Sampling sources", []string{"1", "2", "4", "8"}, 3, sampling_sources_select_callback).
-                AddButton("Save", update_config).
+                AddDropDown("Mode", []string{"RT", "NRT"}, 0, func(_ string, index int) {
+                    config.mode = index
+                }).
+                AddInputField("Baud rate", "115200", 10, validate_unsigned_int, func(s string) {
+                    config.baudrate, _ = strconv.Atoi(s)
+                }).
+                AddInputField("Sampling frequency", "1000", 10, validate_unsigned_int, func(s string){
+                    config.sampling_freq, _ = strconv.Atoi(s)
+                }).
+                AddDropDown("Sampling sources", []string{"1", "2", "4", "8"}, 3, func(s string, _ int) {
+                    config.sampling_sources, _ = strconv.Atoi(s)
+                }).
+                AddButton("Save", func() {
+                    config.update()
+                    app.SetFocus(list)
+                }).
                 SetCancelFunc(func() {
                     app.SetFocus(list)
                 })
