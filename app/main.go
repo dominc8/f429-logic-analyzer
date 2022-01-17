@@ -9,8 +9,14 @@ import (
     "fmt"
     "os"
     "encoding/binary"
+    "time"
 )
 
+
+type sampling_state struct {
+    channel chan int
+    is_sampling bool
+}
 
 type device_config struct {
     mode int
@@ -38,6 +44,7 @@ var (
     app *tview.Application
     list *tview.List
     form *tview.Form
+    sampl_state sampling_state
 )
 
 func validate_unsigned_int(testToCheck string, lastChar rune) bool {
@@ -53,14 +60,36 @@ func send_command(text string) {
     log.Printf("Sent cmd '%v' [%v]", string(cmd), n)
 }
 
-func cmd_run() {
+func flush_port() {
     serial_port.Flush()
-    send_command("run")
-    go read_data() // TODO: this is probably neverending routine, so what happens if someone starts sampling, stops and then starts again?
+    for {
+        buf := make([]byte, 256)
+        n, err := serial_port.Read(buf)
+        log.Printf("Flushed manually %v bytes", n)
+        if err != nil || n == 0 {
+            log.Printf("Breaking flushing, err=%v", err)
+            break
+        }
+    }
+}
+
+func cmd_run() {
+    if sampl_state.is_sampling == false {
+        flush_port()
+        send_command("run")
+        list.SetItemText(0, "Stop sampling", "")
+        sampl_state.is_sampling = true
+        sampl_state.channel = make(chan int)
+        go read_data()
+    } else {
+        close (sampl_state.channel)
+        sampl_state.is_sampling = false
+        list.SetItemText(0, "Start sampling", "")
+    }
 }
 
 func connect_to_device() {
-    serial_config := &serial.Config{Name: "/dev/ttyACM0", Baud: 115200}
+    serial_config := &serial.Config{Name: "/dev/ttyACM0", Baud: 115200, ReadTimeout: time.Second * 5}
     s, err := serial.OpenPort(serial_config)
     if err != nil {
         log.Fatal(err)
@@ -72,14 +101,19 @@ func connect_to_device() {
 func read_data() {
     outf, _ := os.OpenFile("tmp_data.bin", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
     defer outf.Close()
-    buf := make([]byte, 256)
+    buf := make([]byte, 1024)
 
     for {
-        n, err := serial_port.Read(buf)
-        if err == nil && n > 0 {
-            binary.Write(outf, binary.LittleEndian, buf[:n])
-        } else {
-            break
+        select {
+            case _, ok := <- sampl_state.channel:
+                if ok == false {
+                    return
+                }
+            default:
+                n, err := serial_port.Read(buf)
+                if err == nil && n > 0 {
+                    binary.Write(outf, binary.LittleEndian, buf[:n])
+                }
         }
     }
 }
