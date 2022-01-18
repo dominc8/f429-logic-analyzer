@@ -11,7 +11,38 @@ import (
     "encoding/binary"
     "time"
 )
-
+var all_baudrates = [...]string {
+		"4000000",
+		"3500000",
+		"3000000",
+		"2500000",
+		"2000000",
+		"1500000",
+		"1152000",
+		"1000000",
+		"921600",
+		"576000",
+		"500000",
+		"460800",
+		"230400",
+		"115200",
+		"57600",
+		"38400",
+		"19200",
+		"9600",
+		"4800",
+		"2400",
+		"1800",
+		"1200",
+		"600",
+		"300",
+		"200",
+		"150",
+		"134",
+		"110",
+		"75",
+		"50",
+	}
 
 type sampling_state struct {
     channel chan int
@@ -25,7 +56,7 @@ type device_config struct {
     sampling_sources int
 }
 
-func (cfg device_config) init() {
+func (cfg *device_config) init() {
     cfg.mode = 0
     cfg.baudrate = 115200
     cfg.sampling_freq = 1000
@@ -40,6 +71,7 @@ func (cfg device_config) update() {
 }
 
 var (
+    config device_config
     serial_port *serial.Port
     app *tview.Application
     list *tview.List
@@ -60,14 +92,15 @@ func send_command(text string) {
     log.Printf("Sent cmd '%v' [%v]", string(cmd), n)
 }
 
-func flush_port() {
-    serial_port.Flush()
+func flush_port(port *serial.Port) {
+    port.Flush()
+    n_all := 0
     for {
         buf := make([]byte, 256)
-        n, err := serial_port.Read(buf)
-        log.Printf("Flushed manually %v bytes", n)
+        n, err := port.Read(buf)
+        n_all += n
         if err != nil || n == 0 {
-            log.Printf("Breaking flushing, err=%v", err)
+            log.Printf("Breaking flushing, n_all=%v, err=%v", n_all, err)
             break
         }
     }
@@ -75,21 +108,24 @@ func flush_port() {
 
 func cmd_run() {
     if sampl_state.is_sampling == false {
-        flush_port()
+        flush_port(serial_port)
         send_command("run")
+        serial_port.Close()
+        connect_to_device()
         list.SetItemText(0, "Stop sampling", "")
         sampl_state.is_sampling = true
         sampl_state.channel = make(chan int)
         go read_data()
     } else {
         close (sampl_state.channel)
+        flush_port(serial_port)
         sampl_state.is_sampling = false
         list.SetItemText(0, "Start sampling", "")
     }
 }
 
 func connect_to_device() {
-    serial_config := &serial.Config{Name: "/dev/ttyACM0", Baud: 115200, ReadTimeout: time.Second * 5}
+    serial_config := &serial.Config{Name: "/dev/ttyACM0", Baud: config.baudrate, ReadTimeout: time.Second * 5}
     s, err := serial.OpenPort(serial_config)
     if err != nil {
         log.Fatal(err)
@@ -119,7 +155,6 @@ func read_data() {
 }
 
 func main() {
-    var config device_config
     config.init()
 
     log_file, _ := os.OpenFile("log.txt", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
@@ -131,7 +166,9 @@ func main() {
     list = tview.NewList().
                 AddItem("Start sampling", "", 'a', cmd_run).
                 AddItem("Configure parameters", "", 'b', func() {
-                    app.SetFocus(form)
+                    if !sampl_state.is_sampling {
+                        app.SetFocus(form)
+                    }
                 }).
                 AddItem("Quit", "", 'q', func() {
                     app.Stop()
@@ -141,7 +178,7 @@ func main() {
                 AddDropDown("Mode", []string{"RT", "NRT"}, 0, func(_ string, index int) {
                     config.mode = index
                 }).
-                AddInputField("Baud rate", "115200", 10, validate_unsigned_int, func(s string) {
+                AddDropDown("Baud rate", all_baudrates[:], 13, func(s string, _ int) {
                     config.baudrate, _ = strconv.Atoi(s)
                 }).
                 AddInputField("Sampling frequency", "1000", 10, validate_unsigned_int, func(s string){
