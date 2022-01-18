@@ -118,7 +118,6 @@ func cmd_run() {
         go read_data()
     } else {
         close (sampl_state.channel)
-        flush_port(serial_port)
         sampl_state.is_sampling = false
         list.SetItemText(0, "Start sampling", "")
     }

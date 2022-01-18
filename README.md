@@ -18,6 +18,11 @@ Commands have to be sent individually with fixed size of 20 chars, i.e. to send 
 UI application was made in Java. It serves as a user-devices interface. It has the ability to show different data channels (up to 4 charts can be comfortably showed).
 It also can send commands (listed above) to the device. Moreover user can change time of measurement which will be plotted on the charts.
 
+#### TUI app
+TUI application was made in Go. It can be used to send commands to device. Configuring parameters and saving them results in sending proper commands
+to device through UART. Starting sampling tries to flush and discard any data that is present on UART, then it sends **run** command and saves received
+samples to binary file. Stopping sampling stops reading from UART and closes the file.
+
 ##### Tested "limits"
 * Sampling 8 pins simultaneously with frequency of 200 kHz and sending them through 2M baudrate UART
 
