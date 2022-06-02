@@ -21,7 +21,12 @@ It also can send commands (listed above) to the device. Moreover user can change
 #### TUI app
 TUI application was made in Go. It can be used to send commands to device. Configuring parameters and saving them results in sending proper commands
 to device through UART. Starting sampling tries to flush and discard any data that is present on UART, then it sends **run** command and saves received
-samples to binary file. Stopping sampling stops reading from UART and closes the file.
+samples to binary file. Stopping sampling stops reading from UART and closes the file.  
+Displaying data can be done using PulseView from sigrok. To do it open PulseView, import file as raw binary data
+and select proper number of channels and sampling frequency. Example plot shown below:
+
+<img src="./example/tmp_data.png">
+
 
 ##### Tested "limits"
 * Sampling 8 pins simultaneously with frequency of 200 kHz and sending them through 2M baudrate UART
